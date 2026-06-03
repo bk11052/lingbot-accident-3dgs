@@ -1,0 +1,56 @@
+# 파이프라인 기본 설정. 스테이지는 context["config"][<stage>]에서 값을 읽고,
+# 키가 없으면 코드의 기본값을 쓴다.
+
+ingest:
+  fps: 10              # COLMAP/lingbot용 프레임 추출 fps
+  quality: 2           # ffmpeg -q:v (낮을수록 고품질)
+
+geometry:              # s03 lingbot 추론 + gravity align
+  # model_path: 미설정 시 환경변수 LINGBOT_MODEL_PATH 사용.
+  #   로컬 .pt 체크포인트 경로 또는 HuggingFace repo id (예: robbyant/lingbot-map).
+  model_path: null
+  mode: auto           # auto | streaming | windowed (auto: >500프레임이면 windowed)
+  image_size: 518
+  patch_size: 14
+  num_scale_frames: 8
+  window_size: 64
+  overlap_size: 16
+  keyframe_interval: null   # null → auto (streaming에서 >320프레임이면 자동 설정)
+  camera_num_iterations: 4
+  use_sdpa: null            # null → auto (FlashInfer 없으면 SDPA). A5000(cu118)은 SDPA.
+  # gravity align / 메트릭 스케일
+  ground_conf_percentile: 75
+  camera_height_prior:      # input_type별 카메라 높이(m)
+    video: 1.5
+    waymo: 2.05
+  metric_rescale: true      # 카메라 높이 prior에 맞춰 월드를 메트릭으로 리스케일
+  init_downsample: 10       # 3DGS 초기 sparse PC 공간 서브샘플
+  init_conf_threshold: 1.5
+  images_3dgs_every_n: 2    # 3DGS 학습용 프레임 서브샘플 간격
+
+background_pcd:        # s04
+  conf_threshold: 1.5
+  voxel_size: 0.05      # 메트릭(m) 기준 voxel downsample. metric_rescale=false면 조정 필요.
+  sor_nb_neighbors: 20
+  sor_std_ratio: 2.0
+  max_points: 3000000
+
+gaussian_train:        # s05
+  conda_env: gs3dgs    # 3DGS 학습용 별도 conda 환경(diff rasterizer 빌드 포함)
+  iterations: 30000
+  # gaussian_splatting_root: 미설정 시 third_party/gaussian-splatting 사용.
+  gaussian_splatting_root: null
+
+trajectory:            # s06
+  lower_frac: 0.40      # 마스크 하위 비율(뒷범퍼 ROI)
+  pct_low: 20.0
+  pct_high: 30.0
+  min_roi_pixels: 20
+  min_pct_pixels: 5
+  max_predict_gap: 5    # 연속 predict-only 프레임 한계(초과 시 KF 분할)
+  kf_observation_noise: 1.0
+  fps: 10               # 속도(m/s) 환산용 — ingest.fps와 일치시킬 것
+
+export:                # s07
+  # splat_converter_cmd: ply→splat 변환 명령. 미설정 시 third_party 스크립트 탐색.
+  splat_converter_cmd: null

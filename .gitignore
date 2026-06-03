@@ -15,3 +15,7 @@ skyseg.onnx
 weights/
 .DS_Store
 **/.DS_Store
+
+# pipeline
+pipeline/outputs/
+third_party/

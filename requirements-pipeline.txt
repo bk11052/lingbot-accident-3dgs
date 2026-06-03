@@ -1,0 +1,24 @@
+# 사고장면 재구성 파이프라인 의존성 (lingbot_map 본체와 별개).
+# lingbot_map 자체는 `pip install -e .` 로 설치(같은 레포).
+#
+# 권장: lingbot 지오메트리용 env 와 3DGS 학습용 env 를 분리한다.
+#   - lingbot env: torch 2.8 / cu128 (+ 선택적 FlashInfer) + 아래 의존성
+#   - 3DGS env(gs3dgs): gaussian-splatting + diff-gaussian-rasterization 빌드
+# 자세한 설치는 pipeline/README.md 참고.
+
+# 공통
+numpy<2
+scipy
+opencv-python
+pyyaml
+tqdm
+
+# s02 segment + track
+ultralytics            # YOLOv8-seg (AGPL-3.0)
+lap>=0.5.12            # ByteTrack 데이터 연관
+
+# s04 background point cloud
+open3d>=0.19
+
+# s06 trajectory (AB3DMOT KF)
+filterpy>=1.4.5        # third_party/AB3DMOT 의 KF 가 내부적으로 사용

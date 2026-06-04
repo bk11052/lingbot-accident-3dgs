@@ -37,6 +37,7 @@ background_pcd:        # s04
 
 gaussian_train:        # s05
   conda_env: gs3dgs    # 3DGS 학습용 별도 conda 환경(diff rasterizer 빌드 포함)
+  cuda_device: null    # 학습 서브프로세스 GPU 고정 번호. null이면 부모 env의 CUDA_VISIBLE_DEVICES 상속(권장).
   iterations: 30000
   # gaussian_splatting_root: 미설정 시 third_party/gaussian-splatting 사용.
   gaussian_splatting_root: null

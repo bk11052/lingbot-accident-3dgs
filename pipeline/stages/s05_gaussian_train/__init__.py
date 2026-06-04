@@ -24,6 +24,7 @@ Writes: gs_model_dir (학습 모델 디렉토리; point_cloud/iteration_*/point_
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import traceback
@@ -117,16 +118,25 @@ def _run_impl(context):
                               model=model_dir, iters=iters)
         cmd_list = cmd.split() if isinstance(cmd, str) else cmd
     else:
+        # --no-capture-output: train.py의 tqdm 진행 로그를 실시간으로 흘려보낸다
+        # (없으면 conda run이 출력을 버퍼링해 학습이 멈춘 것처럼 보임).
         cmd_list = [
-            "conda", "run", "-n", env, "python", f"{gs_root}/train.py",
+            "conda", "run", "--no-capture-output", "-n", env, "python", f"{gs_root}/train.py",
             "-s", str(scene_dir), "-m", str(model_dir), "--iterations", str(iters),
         ]
 
-    logger.info("Launching 3DGS training (env=%s, iters=%d):\n  %s",
-                env, iters, " ".join(map(str, cmd_list)))
+    # 학습 서브프로세스의 GPU 지정(gaussian_train.cuda_device, 미설정 시 부모 env 상속).
+    run_env = os.environ.copy()
+    cuda_device = cfg.get("cuda_device")
+    if cuda_device is not None:
+        run_env["CUDA_VISIBLE_DEVICES"] = str(cuda_device)
+
+    logger.info("Launching 3DGS training (env=%s, iters=%d, CUDA_VISIBLE_DEVICES=%s):\n  %s",
+                env, iters, run_env.get("CUDA_VISIBLE_DEVICES", "<inherit>"),
+                " ".join(map(str, cmd_list)))
     logger.warning("vanilla train.py는 마스크 loss 제외 미지원 — 필요 시 "
                    "gaussian_train.train_cmd_template로 mask-aware 명령 지정.")
-    subprocess.run(cmd_list, check=True)
+    subprocess.run(cmd_list, check=True, env=run_env)
 
     plys = sorted(model_dir.glob("point_cloud/iteration_*/point_cloud.ply"),
                   key=lambda p: int(p.parent.name.split("_")[-1]))

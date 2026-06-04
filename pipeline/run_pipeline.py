@@ -47,7 +47,9 @@ DEFAULT_STEPS = [
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="LingBot 기반 단안 사고장면 재구성 파이프라인")
-    p.add_argument("--input", required=True, help="입력 영상 경로(.mp4/.avi) 또는 .tfrecord")
+    p.add_argument("--input", required=True,
+                   help="입력 영상(.mp4/.avi/.mov) 또는 이미 추출된 프레임 폴더 경로. "
+                        "Waymo 프레임 폴더는 --input_type waymo 와 함께 지정.")
     p.add_argument("--input_type", choices=["auto", "video", "waymo"], default="auto")
     p.add_argument("--out_root", default=None,
                    help="출력 루트(기본: pipeline/outputs/run_<timestamp>)")

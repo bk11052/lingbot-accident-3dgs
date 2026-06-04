@@ -1,7 +1,9 @@
 """Stage s01: 프레임 추출.
 
-영상(.mp4/.avi)을 ffmpeg로 프레임(.jpg)으로 분해해 images_colmap/ 에 저장한다.
-(Waymo .tfrecord 입력은 추후 추가 — 현재는 video 입력에 집중.)
+입력이 영상(.mp4/.avi/.mov)이면 ffmpeg로 프레임(.jpg)으로 분해하고,
+입력이 **이미 추출된 프레임 폴더**(예: Waymo extract_waymo.py 산출물)면 그 안의
+이미지(jpg/jpeg/png)를 제로패딩 .jpg 로 images_colmap/ 에 정리한다.
+(Waymo .tfrecord 원본 직접 디코딩은 미지원 — 폴더로 미리 추출해 입력할 것.)
 
 Reads:  context["input_path"], context["input_type"]
 Writes: context["artifacts"]["images_colmap"], ["ingest_vis"]
@@ -10,6 +12,7 @@ Writes: context["artifacts"]["images_colmap"], ["ingest_vis"]
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
 import cv2
@@ -19,7 +22,35 @@ from .video import extract_video_frames
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["extract_video_frames", "run"]
+__all__ = ["extract_video_frames", "ingest_frame_folder", "run"]
+
+# 폴더 입력에서 인식할 이미지 확장자(대소문자 무관).
+_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".bmp")
+
+
+def ingest_frame_folder(src_dir: Path, out_dir: Path) -> int:
+    """이미 추출된 프레임 폴더의 이미지를 frame_NNNNN.jpg 로 out_dir 에 정리.
+
+    jpg/jpeg 는 무손실 복사, 그 외 포맷은 jpg 로 변환 저장한다. 반환값은 프레임 수.
+    """
+    paths = sorted(p for p in src_dir.iterdir()
+                   if p.is_file() and p.suffix.lower() in _IMAGE_EXTS)
+    if not paths:
+        raise ValueError(
+            f"프레임 폴더에 이미지가 없습니다: {src_dir} "
+            f"(찾는 확장자: {', '.join(_IMAGE_EXTS)})"
+        )
+    for i, p in enumerate(paths):
+        dst = out_dir / f"frame_{i:05d}.jpg"
+        if p.suffix.lower() in (".jpg", ".jpeg"):
+            shutil.copy2(p, dst)
+        else:
+            img = cv2.imread(str(p))
+            if img is None:
+                logger.warning("이미지 로드 실패, 건너뜀: %s", p)
+                continue
+            cv2.imwrite(str(dst), img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    return len(list(out_dir.glob("*.jpg")))
 
 
 def _write_sample_grid(frame_dir: Path, vis_path: Path, n: int = 9, cols: int = 3) -> None:
@@ -49,25 +80,25 @@ def run(context: dict) -> dict:
     out_root = Path(context["out_root"])
     cfg = context.get("config", {}).get("ingest", {})
 
-    if input_type != "video":
-        raise ValueError(
-            f"s01_ingest는 현재 video 입력만 지원합니다 (input_type={input_type}). "
-            "Waymo 지원은 추후 추가 예정."
-        )
-
     out_dir = out_root / "s01_ingest" / "images_colmap"
     out_dir.mkdir(parents=True, exist_ok=True)
     vis_path = out_root / "s01_ingest" / "sample_grid.png"
 
-    fps = cfg.get("fps", 10)
-    quality = cfg.get("quality", 2)
-    logger.info("Extracting frames @ %dfps from %s", fps, input_path.name)
-    extract_video_frames(input_path, out_dir, fps=fps, quality=quality)
+    if input_path.is_dir():
+        # 이미 추출된 프레임 폴더(예: Waymo) — 변환 없이 정리.
+        logger.info("Ingesting pre-extracted frame folder: %s (type=%s)",
+                    input_path, input_type)
+        frame_count = ingest_frame_folder(input_path, out_dir)
+    else:
+        fps = cfg.get("fps", 10)
+        quality = cfg.get("quality", 2)
+        logger.info("Extracting frames @ %dfps from %s", fps, input_path.name)
+        extract_video_frames(input_path, out_dir, fps=fps, quality=quality)
+        frame_count = len(list(out_dir.glob("*.jpg")))
 
-    frame_count = len(list(out_dir.glob("*.jpg")))
     if frame_count == 0:
-        raise RuntimeError(f"No frames extracted to {out_dir} — check input/ffmpeg.")
-    logger.info("Extracted %d frames -> %s", frame_count, out_dir)
+        raise RuntimeError(f"No frames available in {out_dir} — check input/ffmpeg.")
+    logger.info("Prepared %d frames -> %s", frame_count, out_dir)
 
     _write_sample_grid(out_dir, vis_path)
 
